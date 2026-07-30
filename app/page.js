@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { motion, useReducedMotion, AnimatePresence } from 'framer-motion';
 import {
   Phone, MessageCircle, FileText, MapPin, Sparkles, ArrowRight, Menu, X,
@@ -86,10 +87,16 @@ const WHY_FULVORA = [
 const Logo = ({ variant = 'light' }) => {
   const dark = variant === 'dark';
   return (
-    <a href="#top" className="flex items-center gap-2 group" aria-label="Fulvora Digital">
-      <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#6D28D9] via-[#8B5CF6] to-[#312E81] shadow-glow">
-        <span className="absolute inset-[2px] rounded-[10px] bg-white/10 backdrop-blur-sm" />
-        <Sparkles className="relative h-4 w-4 text-white" strokeWidth={2.5} />
+    <a href="#top" className="flex items-center gap-2.5 group" aria-label="Fulvora Digital">
+      <span className="relative inline-flex h-10 w-10 items-center justify-center">
+        <Image
+          src="/fulvora-logo.png"
+          alt="Fulvora Digital"
+          width={80}
+          height={80}
+          priority
+          className="h-10 w-10 object-contain drop-shadow-[0_6px_20px_rgba(109,40,217,0.35)]"
+        />
       </span>
       <span className={`font-heading text-[19px] tracking-tight ${dark ? 'text-white' : 'text-brand-ink'}`} style={{ fontWeight: 700 }}>
         Fulvora <span className="text-[#8B5CF6]">Digital</span>
@@ -489,7 +496,7 @@ const WhyFulvora = () => (
 );
 
 // ---------- Contact ----------
-const Contact = () => {
+const Contact = ({ onBusinessTypeChange }) => {
   const [state, setState] = useState({ loading: false, ok: false, err: '' });
   const [form, setForm] = useState({ name: '', phone: '', businessType: '', message: '' });
   const onSubmit = async (e) => {
@@ -570,7 +577,7 @@ const Contact = () => {
               </div>
               <div>
                 <label className="text-xs font-semibold text-brand-ink2 uppercase tracking-wider">Business Type</label>
-                <input value={form.businessType} onChange={(e) => setForm({ ...form, businessType: e.target.value })} placeholder="e.g. Dental Clinic, Salon, Real Estate" className="mt-1.5 w-full rounded-xl border border-brand-ink/10 bg-white/80 backdrop-blur px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-[#6D28D9] focus:ring-4 focus:ring-[#6D28D9]/10 transition" />
+                <input value={form.businessType} onChange={(e) => { const v = e.target.value; setForm({ ...form, businessType: v }); onBusinessTypeChange?.(v); }} placeholder="e.g. Dental Clinic, Salon, Real Estate" className="mt-1.5 w-full rounded-xl border border-brand-ink/10 bg-white/80 backdrop-blur px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-[#6D28D9] focus:ring-4 focus:ring-[#6D28D9]/10 transition" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-brand-ink2 uppercase tracking-wider">Message</label>
@@ -629,6 +636,74 @@ const Footer = () => (
     </div>
   </footer>
 );
+
+// ---------- WhatsApp Lead Router Pill ----------
+// Floating pill (left side) that opens a WhatsApp chat pre-filled with the
+// user's Business Type from the Contact form. Appears with a subtle bounce
+// once the user has scrolled past the hero.
+const WhatsAppPill = ({ businessType }) => {
+  const [visible, setVisible] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Auto-expand briefly when businessType is typed
+  useEffect(() => {
+    if (!businessType || businessType.trim().length < 2) return;
+    setExpanded(true);
+    const t = setTimeout(() => setExpanded(false), 4200);
+    return () => clearTimeout(t);
+  }, [businessType]);
+
+  const trimmed = (businessType || '').trim();
+  const message = trimmed
+    ? `Hi Fulvora! I run a ${trimmed} in Pune/PCMC and I'd like to grow with performance marketing.`
+    : `Hi Fulvora! I'd like to discuss performance marketing for my business in Pune/PCMC.`;
+  const base = FULVORA.whatsappHref.split('?')[0];
+  const href = `${base}?text=${encodeURIComponent(message)}`;
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.a
+          key="wa-pill"
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          initial={{ opacity: 0, x: -30, scale: 0.95 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          onMouseEnter={() => setExpanded(true)}
+          onMouseLeave={() => setExpanded(false)}
+          className="fixed bottom-5 left-5 z-40 group inline-flex items-center gap-2.5 rounded-full bg-[#25D366] text-white pl-3 pr-4 py-2.5 shadow-[0_18px_40px_-15px_rgba(37,211,102,0.65)] hover:shadow-[0_22px_50px_-15px_rgba(37,211,102,0.85)] hover:scale-[1.03] transition-all"
+          aria-label="Chat with Fulvora on WhatsApp"
+        >
+          <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
+            <span className="absolute inset-0 rounded-full bg-white/20 animate-ping opacity-60" />
+            <MessageCircle className="relative h-4.5 w-4.5" strokeWidth={2.4} />
+          </span>
+          <div className="flex flex-col items-start leading-tight">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-white/85">Chat on WhatsApp</span>
+            <motion.span
+              initial={false}
+              animate={{ opacity: expanded ? 1 : 0, height: expanded ? 'auto' : 0, marginTop: expanded ? 2 : 0 }}
+              transition={{ duration: 0.25 }}
+              className="text-[12px] font-medium max-w-[220px] truncate"
+            >
+              {trimmed ? `Pre-filled: ${trimmed}` : 'Instant reply during work hours'}
+            </motion.span>
+          </div>
+        </motion.a>
+      )}
+    </AnimatePresence>
+  );
+};
 
 // ---------- Floating Chatbot ----------
 const CHATBOT_KB = [
@@ -719,6 +794,7 @@ const Chatbot = () => {
 
 // ---------- Page ----------
 function App() {
+  const [businessType, setBusinessType] = useState('');
   return (
     <main className="relative">
       <Navbar />
@@ -730,8 +806,9 @@ function App() {
       <WhoWeHelp />
       <Pricing />
       <WhyFulvora />
-      <Contact />
+      <Contact onBusinessTypeChange={setBusinessType} />
       <Footer />
+      <WhatsAppPill businessType={businessType} />
       <Chatbot />
     </main>
   );
