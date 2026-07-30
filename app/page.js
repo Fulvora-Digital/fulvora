@@ -637,10 +637,11 @@ const Footer = () => (
   </footer>
 );
 
-// ---------- WhatsApp Lead Router Pill ----------
-// Floating pill (left side) that opens a WhatsApp chat pre-filled with the
-// user's Business Type from the Contact form. Appears with a subtle bounce
-// once the user has scrolled past the hero.
+// ---------- WhatsApp Lead Router Pill / Sticky Mobile Bar ----------
+// Desktop: a floating pill on the bottom-left that auto-expands with the
+// pre-filled Business Type from the Contact form.
+// Mobile: a full-width sticky bar pinned to the bottom of the viewport so
+// every phone visitor is one tap from a WhatsApp chat.
 const WhatsAppPill = ({ businessType }) => {
   const [visible, setVisible] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -652,7 +653,7 @@ const WhatsAppPill = ({ businessType }) => {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Auto-expand briefly when businessType is typed
+  // Auto-expand briefly (desktop) when businessType is typed
   useEffect(() => {
     if (!businessType || businessType.trim().length < 2) return;
     setExpanded(true);
@@ -670,36 +671,72 @@ const WhatsAppPill = ({ businessType }) => {
   return (
     <AnimatePresence>
       {visible && (
-        <motion.a
-          key="wa-pill"
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-          initial={{ opacity: 0, x: -30, scale: 0.95 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.4, ease: 'easeOut' }}
-          onMouseEnter={() => setExpanded(true)}
-          onMouseLeave={() => setExpanded(false)}
-          className="fixed bottom-5 left-5 z-40 group inline-flex items-center gap-2.5 rounded-full bg-[#25D366] text-white pl-3 pr-4 py-2.5 shadow-[0_18px_40px_-15px_rgba(37,211,102,0.65)] hover:shadow-[0_22px_50px_-15px_rgba(37,211,102,0.85)] hover:scale-[1.03] transition-all"
-          aria-label="Chat with Fulvora on WhatsApp"
-        >
-          <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
-            <span className="absolute inset-0 rounded-full bg-white/20 animate-ping opacity-60" />
-            <MessageCircle className="relative h-4.5 w-4.5" strokeWidth={2.4} />
-          </span>
-          <div className="flex flex-col items-start leading-tight">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-white/85">Chat on WhatsApp</span>
-            <motion.span
-              initial={false}
-              animate={{ opacity: expanded ? 1 : 0, height: expanded ? 'auto' : 0, marginTop: expanded ? 2 : 0 }}
-              transition={{ duration: 0.25 }}
-              className="text-[12px] font-medium max-w-[220px] truncate"
+        <>
+          {/* Desktop pill */}
+          <motion.a
+            key="wa-pill-desktop"
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            initial={{ opacity: 0, x: -30, scale: 0.95 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            onMouseEnter={() => setExpanded(true)}
+            onMouseLeave={() => setExpanded(false)}
+            className="hidden md:inline-flex fixed bottom-5 left-5 z-40 group items-center gap-2.5 rounded-full bg-[#25D366] text-white pl-3 pr-4 py-2.5 shadow-[0_18px_40px_-15px_rgba(37,211,102,0.65)] hover:shadow-[0_22px_50px_-15px_rgba(37,211,102,0.85)] hover:scale-[1.03] transition-all"
+            aria-label="Chat with Fulvora on WhatsApp"
+          >
+            <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
+              <span className="absolute inset-0 rounded-full bg-white/20 animate-ping opacity-60" />
+              <MessageCircle className="relative h-4 w-4" strokeWidth={2.4} />
+            </span>
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-white/85">Chat on WhatsApp</span>
+              <motion.span
+                initial={false}
+                animate={{ opacity: expanded ? 1 : 0, height: expanded ? 'auto' : 0, marginTop: expanded ? 2 : 0 }}
+                transition={{ duration: 0.25 }}
+                className="text-[12px] font-medium max-w-[220px] truncate"
+              >
+                {trimmed ? `Pre-filled: ${trimmed}` : 'Instant reply during work hours'}
+              </motion.span>
+            </div>
+          </motion.a>
+
+          {/* Mobile sticky bar */}
+          <motion.div
+            key="wa-bar-mobile"
+            initial={{ opacity: 0, y: 60 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 60 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="md:hidden fixed inset-x-0 bottom-0 z-40 px-3 pb-3 pt-2 pointer-events-none"
+            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+          >
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Chat with Fulvora on WhatsApp"
+              className="pointer-events-auto relative flex items-center justify-between gap-3 rounded-full bg-[#25D366] text-white pl-3 pr-5 py-3 shadow-[0_18px_40px_-10px_rgba(37,211,102,0.75)] active:scale-[0.98] transition-transform"
             >
-              {trimmed ? `Pre-filled: ${trimmed}` : 'Instant reply during work hours'}
-            </motion.span>
-          </div>
-        </motion.a>
+              <span className="flex items-center gap-3 min-w-0">
+                <span className="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 shrink-0">
+                  <span className="absolute inset-0 rounded-full bg-white/25 animate-ping opacity-60" />
+                  <MessageCircle className="relative h-5 w-5" strokeWidth={2.4} />
+                </span>
+                <span className="flex flex-col leading-tight min-w-0">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-white/85">Chat on WhatsApp</span>
+                  <span className="text-[13px] font-semibold truncate">
+                    {trimmed ? `Ask about ${trimmed}` : 'Get a reply within minutes'}
+                  </span>
+                </span>
+              </span>
+              <ArrowRight className="h-5 w-5 shrink-0" />
+            </a>
+          </motion.div>
+        </>
       )}
     </AnimatePresence>
   );
@@ -754,12 +791,12 @@ const Chatbot = () => {
 
   return (
     <>
-      <button onClick={() => setOpen((v) => !v)} aria-label="Open chat" className="fixed bottom-5 right-5 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#6D28D9] to-[#8B5CF6] text-white shadow-glow hover:scale-105 transition-transform">
+      <button onClick={() => setOpen((v) => !v)} aria-label="Open chat" className="fixed bottom-24 md:bottom-5 right-5 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#6D28D9] to-[#8B5CF6] text-white shadow-glow hover:scale-105 transition-transform">
         {open ? <X className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
       </button>
       <AnimatePresence>
         {open && (
-          <motion.div initial={{ opacity: 0, y: 20, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.98 }} transition={{ duration: 0.25 }} className="fixed bottom-24 right-5 z-40 w-[92vw] max-w-sm rounded-[24px] glass border border-white/60 shadow-premium overflow-hidden">
+          <motion.div initial={{ opacity: 0, y: 20, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.98 }} transition={{ duration: 0.25 }} className="fixed bottom-40 md:bottom-24 right-5 z-40 w-[92vw] max-w-sm rounded-[24px] glass border border-white/60 shadow-premium overflow-hidden">
             <div className="px-4 py-3 bg-gradient-to-r from-[#6D28D9] to-[#8B5CF6] text-white flex items-center gap-2">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15"><Bot className="h-4 w-4" /></span>
               <div className="leading-tight">
