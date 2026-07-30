@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import { createChat, UserMessage, validateApiKey } from 'emergentintegrations';
+import { Resend } from 'resend';
 
 // ------------------------------------------------------------------
 // Fulvora Digital — API routes
@@ -25,6 +26,58 @@ async function getDb() {
 const json = (data, status = 200) => NextResponse.json(data, { status });
 
 // ------------------------------------------------------------------
+// Email alerts via Resend
+// ------------------------------------------------------------------
+let cachedResend = null;
+function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
+  if (!cachedResend) cachedResend = new Resend(process.env.RESEND_API_KEY);
+  return cachedResend;
+}
+
+const escapeHtml = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
+async function sendLeadEmail({ subject, heading, rows, transcript }) {
+  const resend = getResend();
+  if (!resend) return { skipped: true, reason: 'RESEND_API_KEY missing' };
+  const to = process.env.LEAD_ALERT_TO || 'fulvoradigital@gmail.com';
+  const from = process.env.LEAD_ALERT_FROM || 'Fulvora Leads <onboarding@resend.dev>';
+
+  const rowsHtml = rows
+    .filter((r) => r.value)
+    .map((r) => `<tr><td style="padding:8px 14px;color:#4B5563;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;">${escapeHtml(r.label)}</td><td style="padding:8px 14px;color:#111827;font-size:15px;font-weight:600;">${escapeHtml(r.value)}</td></tr>`)
+    .join('');
+
+  const transcriptHtml = transcript
+    ? `<h3 style="margin:24px 0 8px;font-family:Inter,system-ui;font-size:14px;color:#4B5563;text-transform:uppercase;letter-spacing:0.08em;">Chat transcript</h3><pre style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:12px;padding:14px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#111827;white-space:pre-wrap;word-break:break-word;">${escapeHtml(transcript)}</pre>`
+    : '';
+
+  const html = `<!doctype html><html><body style="margin:0;background:#F8FAFC;padding:24px;font-family:Inter,Helvetica,Arial,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;background:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px -20px rgba(49,46,129,0.18);">
+      <div style="background:linear-gradient(135deg,#6D28D9,#8B5CF6);padding:20px 24px;color:white;">
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.14em;opacity:0.85;">Fulvora Digital</div>
+        <div style="font-size:20px;font-weight:700;margin-top:4px;">${escapeHtml(heading)}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">${rowsHtml}</table>
+      <div style="padding:0 20px 24px;">${transcriptHtml}</div>
+      <div style="padding:14px 24px;background:#F8FAFC;color:#6B7280;font-size:12px;">Sent automatically from your Fulvora website.</div>
+    </div>
+  </body></html>`;
+
+  try {
+    const result = await resend.emails.send({ from, to, subject, html });
+    if (result?.error) console.error('[Resend] send error:', result.error);
+    else console.log('[Resend] sent id=', result?.data?.id, 'to=', to, 'subject=', subject);
+    return { ok: !result?.error, id: result?.data?.id, error: result?.error?.message };
+  } catch (err) {
+    console.error('[Resend] threw:', err?.message);
+    return { ok: false, error: err?.message };
+  }
+}
+
+// ------------------------------------------------------------------
 // /api/contact
 // ------------------------------------------------------------------
 async function handleContact(request) {
@@ -46,7 +99,19 @@ async function handleContact(request) {
     const db = await getDb();
     await db.collection('contact_leads').insertOne(doc);
 
-    // Future integration hooks (Resend, HubSpot, Zoho, Supabase) go here.
+    // Fire-and-forget email alert (non-blocking to the visitor's response)
+    sendLeadEmail({
+      subject: `New website enquiry — ${doc.name}${doc.businessType ? ` · ${doc.businessType}` : ''}`,
+      heading: 'New contact form enquiry',
+      rows: [
+        { label: 'Name', value: doc.name },
+        { label: 'Phone', value: doc.phone },
+        { label: 'Business Type', value: doc.businessType },
+        { label: 'Message', value: doc.message },
+        { label: 'Source', value: 'Contact form' },
+        { label: 'Received', value: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' },
+      ],
+    }).catch(() => {});
 
     return json({ ok: true, id: doc.id });
   } catch (err) {
@@ -256,6 +321,29 @@ async function handleChat(request) {
           justQualified: result.justQualified,
           justBooked: result.justBooked,
         };
+
+        // Email alert when a chat lead becomes qualified OR shows booking intent (once each)
+        if (result.justQualified || result.justBooked) {
+          const eventLabel = result.justBooked && result.justQualified
+            ? 'Qualified lead + booking intent'
+            : result.justBooked ? 'Booking intent detected' : 'New qualified chat lead';
+          sendLeadEmail({
+            subject: `${eventLabel} — ${result.lead.name || 'Unnamed visitor'}${result.lead.businessType ? ` · ${result.lead.businessType}` : ''}`,
+            heading: eventLabel,
+            rows: [
+              { label: 'Name', value: result.lead.name },
+              { label: 'Phone', value: result.lead.phone },
+              { label: 'Business Type', value: result.lead.businessType },
+              { label: 'Area', value: result.lead.area },
+              { label: 'Goal', value: result.lead.goal },
+              { label: 'Booking Intent', value: result.lead.bookingIntent ? 'Yes' : 'No' },
+              { label: 'Session ID', value: sessionId },
+              { label: 'Source', value: 'AI Concierge chat' },
+              { label: 'Received', value: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' },
+            ],
+            transcript,
+          }).catch(() => {});
+        }
       }
     } catch (leadErr) {
       // Never let lead extraction break the chat.
