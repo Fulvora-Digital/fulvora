@@ -15,28 +15,79 @@ const manrope = Manrope({
   display: 'swap',
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://fulvoradigital.com';
+
 export const metadata = {
-  title: 'Fulvora Digital — AI-Powered Performance Marketing in Pune & PCMC',
-  description:
-    'Fulvora Digital designs and runs Meta + Google Ads that bring real phone calls, WhatsApp messages, qualified leads, and store visits for local businesses in Pune and PCMC.',
-  keywords: [
-    'performance marketing Pune',
-    'Meta Ads PCMC',
-    'Google Ads Pune',
-    'digital marketing agency Pune',
-    'Fulvora Digital',
-  ],
-  openGraph: {
-    title: 'Fulvora Digital — We Grow Your Brand. You Grow Your Business.',
-    description:
-      'AI-powered performance marketing for local businesses in Pune and PCMC.',
-    type: 'website',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'Fulvora Digital — AI-Powered Performance Marketing in Pune & PCMC',
+    template: '%s | Fulvora Digital',
   },
+  description:
+    'Fulvora Digital designs and runs Meta + Google Ads that bring real phone calls, WhatsApp messages, qualified leads and store visits for local businesses across Pune and PCMC.',
+  keywords: [
+    'performance marketing Pune', 'digital marketing agency PCMC', 'Meta Ads Pune',
+    'Google Ads Pune', 'AI marketing Pune', 'WhatsApp lead generation', 'Fulvora Digital',
+    'local marketing Wakad', 'digital marketing Hinjewadi', 'Baner ads agency',
+  ],
+  authors: [{ name: 'Fulvora Digital' }],
+  creator: 'Fulvora Digital',
+  openGraph: {
+    type: 'website',
+    locale: 'en_IN',
+    url: SITE_URL,
+    siteName: 'Fulvora Digital',
+    title: 'Fulvora Digital — We Grow Your Brand. You Grow Your Business.',
+    description: 'AI-powered performance marketing for local businesses in Pune and PCMC.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Fulvora Digital — AI-Powered Performance Marketing',
+    description: 'Meta + Google Ads that bring real leads for local businesses in Pune & PCMC.',
+  },
+  robots: { index: true, follow: true },
+  alternates: { canonical: SITE_URL },
+};
+
+export const viewport = {
+  themeColor: '#6D28D9',
+  width: 'device-width',
+  initialScale: 1,
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'LocalBusiness',
+  name: 'Fulvora Digital',
+  description:
+    'AI-powered performance marketing agency serving local businesses in Pune and PCMC.',
+  url: SITE_URL,
+  telephone: '+91-00000-00000',
+  email: 'hello@fulvoradigital.com',
+  areaServed: [
+    { '@type': 'City', name: 'Pune' },
+    { '@type': 'City', name: 'Pimpri-Chinchwad' },
+  ],
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: 'Pune',
+    addressRegion: 'Maharashtra',
+    addressCountry: 'IN',
+  },
+  priceRange: '₹18,000 – ₹45,000 / month',
+  sameAs: [],
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${spaceGrotesk.variable} ${manrope.variable}`}>
+      <head>
+        <link rel="icon" href="/favicon.ico" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="font-body antialiased bg-background text-foreground">
         {children}
       </body>

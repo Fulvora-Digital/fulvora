@@ -1,104 +1,105 @@
-import { MongoClient } from 'mongodb'
-import { v4 as uuidv4 } from 'uuid'
-import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
+import { MongoClient } from 'mongodb';
+import { v4 as uuidv4 } from 'uuid';
 
-// MongoDB connection
-let client
-let db
+// ------------------------------------------------------------------
+// Fulvora Digital — API routes
+// Base: /api/*
+// Currently implements: /api/contact (POST), /api/health (GET)
+// ------------------------------------------------------------------
 
-async function connectToMongo() {
-  if (!client) {
-    client = new MongoClient(process.env.MONGO_URL)
-    await client.connect()
-    db = client.db(process.env.DB_NAME)
-  }
-  return db
+let cachedClient = null;
+async function getDb() {
+  if (cachedClient) return cachedClient.db(process.env.DB_NAME || 'fulvora');
+  const uri = process.env.MONGO_URL;
+  if (!uri) throw new Error('MONGO_URL not configured');
+  const client = new MongoClient(uri);
+  await client.connect();
+  cachedClient = client;
+  return client.db(process.env.DB_NAME || 'fulvora');
 }
 
-// Helper function to handle CORS
-function handleCORS(response) {
-  response.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*')
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  response.headers.set('Access-Control-Allow-Credentials', 'true')
-  return response
-}
+const json = (data, status = 200) => NextResponse.json(data, { status });
 
-// OPTIONS handler for CORS
-export async function OPTIONS() {
-  return handleCORS(new NextResponse(null, { status: 200 }))
-}
-
-// Route handler function
-async function handleRoute(request, { params }) {
-  const { path = [] } = await params
-  const route = `/${path.join('/')}`
-  const method = request.method
-
+async function handleContact(request) {
   try {
-    const db = await connectToMongo()
+    const body = await request.json();
+    const { name, phone, businessType, message } = body || {};
 
-    // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
-    if (route === '/root' && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: "Hello World" }))
-    }
-    // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
-    if (route === '/' && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: "Hello World" }))
+    if (!name || !phone) {
+      return json({ ok: false, error: 'Name and phone are required.' }, 400);
     }
 
-    // Status endpoints - POST /api/status
-    if (route === '/status' && method === 'POST') {
-      const body = await request.json()
-      
-      if (!body.client_name) {
-        return handleCORS(NextResponse.json(
-          { error: "client_name is required" }, 
-          { status: 400 }
-        ))
-      }
+    const doc = {
+      id: uuidv4(),
+      name: String(name).trim().slice(0, 120),
+      phone: String(phone).trim().slice(0, 40),
+      businessType: businessType ? String(businessType).trim().slice(0, 120) : '',
+      message: message ? String(message).trim().slice(0, 2000) : '',
+      source: 'website_contact_form',
+      createdAt: new Date().toISOString(),
+    };
 
-      const statusObj = {
-        id: uuidv4(),
-        client_name: body.client_name,
-        timestamp: new Date()
-      }
+    const db = await getDb();
+    await db.collection('contact_leads').insertOne(doc);
 
-      await db.collection('status_checks').insertOne(statusObj)
-      return handleCORS(NextResponse.json(statusObj))
-    }
+    // ------------------------------------------------------------------
+    // Future integration points — uncomment/wire when credentials are ready:
+    //
+    // 1) Resend (transactional email notification to Fulvora inbox)
+    //    import { Resend } from 'resend';
+    //    const resend = new Resend(process.env.RESEND_API_KEY);
+    //    await resend.emails.send({
+    //      from: 'Fulvora <leads@fulvoradigital.com>',
+    //      to: ['hello@fulvoradigital.com'],
+    //      subject: `New lead: ${doc.name}`,
+    //      text: `${doc.phone}\n${doc.businessType}\n${doc.message}`,
+    //    });
+    //
+    // 2) SMTP (Nodemailer) alternative
+    //
+    // 3) HubSpot CRM — create contact + deal
+    //    await fetch('https://api.hubapi.com/crm/v3/objects/contacts', { ... });
+    //
+    // 4) Zoho CRM — similar to HubSpot with Zoho OAuth
+    //
+    // 5) Supabase Postgres — replace/mirror Mongo insert
+    // ------------------------------------------------------------------
 
-    // Status endpoints - GET /api/status
-    if (route === '/status' && method === 'GET') {
-      const statusChecks = await db.collection('status_checks')
-        .find({})
-        .limit(1000)
-        .toArray()
-
-      // Remove MongoDB's _id field from response
-      const cleanedStatusChecks = statusChecks.map(({ _id, ...rest }) => rest)
-      
-      return handleCORS(NextResponse.json(cleanedStatusChecks))
-    }
-
-    // Route not found
-    return handleCORS(NextResponse.json(
-      { error: `Route ${route} not found` }, 
-      { status: 404 }
-    ))
-
-  } catch (error) {
-    console.error('API Error:', error)
-    return handleCORS(NextResponse.json(
-      { error: "Internal server error" }, 
-      { status: 500 }
-    ))
+    return json({ ok: true, id: doc.id });
+  } catch (err) {
+    return json({ ok: false, error: err?.message || 'Unexpected error' }, 500);
   }
 }
 
-// Export all HTTP methods
-export const GET = handleRoute
-export const POST = handleRoute
-export const PUT = handleRoute
-export const DELETE = handleRoute
-export const PATCH = handleRoute
+function resolvePath(params) {
+  const parts = params?.path || [];
+  return '/' + (Array.isArray(parts) ? parts.join('/') : parts);
+}
+
+export async function GET(request, ctx) {
+  const params = await ctx.params;
+  const path = resolvePath(params);
+  if (path === '/health' || path === '/') {
+    return json({ ok: true, service: 'fulvora-api', time: new Date().toISOString() });
+  }
+  return json({ ok: false, error: 'Not found' }, 404);
+}
+
+export async function POST(request, ctx) {
+  const params = await ctx.params;
+  const path = resolvePath(params);
+  if (path === '/contact') return handleContact(request);
+  return json({ ok: false, error: 'Not found' }, 404);
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
+}
