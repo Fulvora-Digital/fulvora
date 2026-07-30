@@ -148,6 +148,7 @@ Ad spend is separate, paid directly to Meta/Google. Typical range: ₹10,000 –
 Areas served: Wakad, Hinjewadi, Baner, Aundh, Kothrud, Viman Nagar, Pimpri, Chinchwad, Nigdi, Akurdi, Ravet, Deccan and wider Pune + PCMC.
 Industries: dentists, dermatologists, clinics, physiotherapists, veterinary clinics, salons, spas, gyms, yoga studios, fitness coaches, interior designers, painters, cleaners, real estate agents, builders, pet stores, kids wear, electronics, footwear, local retailers.
 Contact: +91 72182 00921 (Phone + WhatsApp) · fulvoradigital@gmail.com · Hours: Mon–Sat, 10 AM–7 PM IST.
+Social: Instagram @fulvoradigital (https://instagram.com/fulvoradigital) · LinkedIn @fulvoradigital (https://www.linkedin.com/company/fulvoradigital).
 
 If you don't know something specific, say so and invite them to WhatsApp or book a call.`;
 

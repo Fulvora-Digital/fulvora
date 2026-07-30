@@ -62,8 +62,8 @@ const jsonLd = {
   description:
     'AI-powered performance marketing agency serving local businesses in Pune and PCMC.',
   url: SITE_URL,
-  telephone: '+91-00000-00000',
-  email: 'hello@fulvoradigital.com',
+  telephone: '+91-72182-00921',
+  email: 'fulvoradigital@gmail.com',
   areaServed: [
     { '@type': 'City', name: 'Pune' },
     { '@type': 'City', name: 'Pimpri-Chinchwad' },
@@ -75,7 +75,10 @@ const jsonLd = {
     addressCountry: 'IN',
   },
   priceRange: '₹18,000 – ₹45,000 / month',
-  sameAs: [],
+  sameAs: [
+    'https://instagram.com/fulvoradigital',
+    'https://www.linkedin.com/company/fulvoradigital',
+  ],
 };
 
 export default function RootLayout({ children }) {

@@ -7,7 +7,7 @@ import {
   Phone, MessageCircle, FileText, MapPin, Sparkles, ArrowRight, Menu, X,
   Target, Search, Building2, Share2, LayoutTemplate, BarChart3, Check,
   Stethoscope, Scissors, Dumbbell, Home as HomeIcon, ShoppingBag,
-  Zap, Layers, Eye, Rocket, Send, Mail, Bot, HelpCircle,
+  Zap, Layers, Eye, Rocket, Send, Mail, Bot, HelpCircle, Instagram, Linkedin,
 } from 'lucide-react';
 import { FULVORA } from '@/lib/fulvora-config';
 
@@ -559,6 +559,19 @@ const Contact = ({ onBusinessTypeChange }) => {
                 <p className="font-medium text-brand-ink">{FULVORA.businessArea}</p>
               </div>
             </div>
+            <div className="pt-4 mt-2 border-t border-brand-ink/10">
+              <p className="text-xs uppercase tracking-wider text-brand-ink2 font-semibold mb-2.5">Follow us</p>
+              <div className="flex items-center gap-2.5">
+                <a href={FULVORA.instagram} target="_blank" rel="noreferrer" aria-label="Instagram @fulvoradigital" className="group inline-flex items-center gap-2 rounded-full border border-brand-ink/10 bg-white px-3.5 py-2 text-sm font-medium text-brand-ink hover:border-[#8B5CF6] hover:text-[#8B5CF6] transition-colors">
+                  <Instagram className="h-4 w-4" />
+                  <span>{FULVORA.instagramHandle}</span>
+                </a>
+                <a href={FULVORA.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn @fulvoradigital" className="group inline-flex items-center gap-2 rounded-full border border-brand-ink/10 bg-white px-3.5 py-2 text-sm font-medium text-brand-ink hover:border-[#6D28D9] hover:text-[#6D28D9] transition-colors">
+                  <Linkedin className="h-4 w-4" />
+                  <span>{FULVORA.linkedinHandle}</span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -621,12 +634,23 @@ const Footer = () => (
             {FULVORA.tagline}<br />AI-powered performance marketing for local businesses in Pune & PCMC.
           </p>
         </div>
-        <div className="md:justify-self-end">
-          <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <div className="md:justify-self-end space-y-4">
+          <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm md:justify-end">
             {NAV_LINKS.map((l) => (
               <a key={l.href} href={l.href} className="text-white/70 hover:text-white transition-colors">{l.label}</a>
             ))}
           </nav>
+          <div className="flex items-center gap-3 md:justify-end">
+            <a href={FULVORA.instagram} target="_blank" rel="noreferrer" aria-label="Instagram @fulvoradigital" className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 hover:bg-white/10 hover:border-white/30 transition-colors">
+              <Instagram className="h-4 w-4" />
+            </a>
+            <a href={FULVORA.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn @fulvoradigital" className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 hover:bg-white/10 hover:border-white/30 transition-colors">
+              <Linkedin className="h-4 w-4" />
+            </a>
+            <a href={FULVORA.whatsappHref} target="_blank" rel="noreferrer" aria-label="WhatsApp" className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 hover:bg-white/10 hover:border-white/30 transition-colors">
+              <MessageCircle className="h-4 w-4" />
+            </a>
+          </div>
         </div>
       </div>
       <div className="mt-12 pt-6 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-white/50">
