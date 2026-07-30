@@ -742,51 +742,66 @@ const WhatsAppPill = ({ businessType }) => {
   );
 };
 
-// ---------- Floating Chatbot ----------
-const CHATBOT_KB = [
-  { q: /price|pricing|cost|fee|charge/i, a: 'Our plans start at ₹18,000–₹25,000/month (Starter), ₹30,000–₹45,000/month (Growth, most popular), and custom quotes for Full Brand + Ads. Ad spend is separate and paid directly to Meta/Google. Check the Pricing section above for details.' },
-  { q: /service|offer|what.*do|provide/i, a: 'We run Meta Ads, Google Ads, Google Business Profile optimisation, Social Media Management, Landing Page Optimisation, and Transparent Reporting — all as one integrated system.' },
-  { q: /whatsapp/i, a: `You can WhatsApp us directly at ${FULVORA.whatsapp}. Tap the WhatsApp icon in the Contact section for a one-click chat.` },
-  { q: /phone|call|number/i, a: `Give us a call on ${FULVORA.phone} — Mon–Sat, 10 AM to 7 PM IST.` },
-  { q: /email|mail/i, a: `Email us at ${FULVORA.email} and we’ll reply within one working day.` },
-  { q: /area|location|where|serve|city|pune|pcmc|wakad|hinjewadi|baner|kothrud|aundh/i, a: 'We serve local businesses across Pune & PCMC — including Wakad, Hinjewadi, Baner, Aundh, Kothrud, Viman Nagar, Pimpri, Chinchwad, Nigdi, Akurdi, Ravet and Deccan.' },
-  { q: /industry|business|help|niche|category|dentist|salon|gym|real estate|retail/i, a: 'We help 20+ local categories — dentists, dermatologists, clinics, salons, spas, gyms, yoga studios, interior designers, real estate agents, builders, local retailers and more.' },
-  { q: /report|dashboard|transparent/i, a: 'You get a clean monthly report plus access to a live dashboard. You always know where every rupee went and what it delivered.' },
-  { q: /meta|facebook|instagram/i, a: 'Yes — we design and run Meta (Facebook + Instagram) ad campaigns for calls, WhatsApp messages, lead forms and store visits.' },
-  { q: /google/i, a: 'We run Google Ads including Search, Performance Max, and Local campaigns tuned for high-intent buyers.' },
-  { q: /^(hi|hello|hey|namaste|hola)/i, a: `Hi! I’m Fulvora Assistant. Ask me about pricing, services, WhatsApp, or the areas we serve — or tap a quick reply below.` },
-];
+// ---------- Floating Chatbot (Gemini-powered concierge) ----------
+const QUICK_REPLIES = ['What do you offer?', 'What are your prices?', 'Book a strategy call'];
 
-const QUICK_REPLIES = ['What do you offer?', 'What are your prices?', 'Which areas do you cover?'];
-
-const FALLBACK = `I don’t have a perfect answer for that. Please WhatsApp us at ${FULVORA.whatsapp} or use the Contact form above — our team will get back to you quickly.`;
-
-// TODO: Replace rule-based reply below with an LLM call (OpenAI / Gemini / Claude)
-// e.g. await fetch('/api/chat', { method: 'POST', body: JSON.stringify({ message }) })
-const botReply = (text) => {
-  const t = (text || '').trim();
-  for (const item of CHATBOT_KB) if (item.q.test(t)) return item.a;
-  return FALLBACK;
+// Renders assistant text with clickable links (http/https, phones, emails).
+const renderRichText = (text) => {
+  const parts = String(text).split(/(https?:\/\/[^\s]+|\+91[\s-]?\d[\d\s-]{8,}|[\w.+-]+@[\w-]+\.[\w.-]+)/g);
+  return parts.map((p, i) => {
+    if (!p) return null;
+    if (/^https?:\/\//.test(p)) return <a key={i} href={p} target="_blank" rel="noreferrer" className="text-[#6D28D9] underline font-semibold break-all">{p}</a>;
+    if (/^\+91/.test(p)) return <a key={i} href={`tel:${p.replace(/[^\d+]/g, '')}`} className="text-[#6D28D9] underline font-semibold">{p}</a>;
+    if (/@/.test(p)) return <a key={i} href={`mailto:${p}`} className="text-[#6D28D9] underline font-semibold">{p}</a>;
+    return <span key={i}>{p}</span>;
+  });
 };
 
 const Chatbot = () => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { from: 'bot', text: 'Hi! I’m the Fulvora Assistant. How can I help you grow your business today?' },
+    { from: 'bot', text: 'Hi! I\u2019m the Fulvora Assistant. Tell me a bit about your business \u2014 what do you run and which area of Pune/PCMC are you in?' },
   ]);
   const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState('');
   const listRef = useRef(null);
 
   useEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [messages, open]);
+    if (typeof window === 'undefined') return;
+    const KEY = 'fulvora_chat_session_id';
+    let id = window.localStorage.getItem(KEY);
+    if (!id) {
+      id = (window.crypto?.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2));
+      window.localStorage.setItem(KEY, id);
+    }
+    setSessionId(id);
+  }, []);
 
-  const send = (text) => {
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [messages, open, loading]);
+
+  const send = async (text) => {
     const value = (text ?? input).trim();
-    if (!value) return;
+    if (!value || loading || !sessionId) return;
     setMessages((m) => [...m, { from: 'user', text: value }]);
     setInput('');
-    setTimeout(() => setMessages((m) => [...m, { from: 'bot', text: botReply(value) }]), 350);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, message: value }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Chat failed');
+      setMessages((m) => [...m, { from: 'bot', text: data.reply }]);
+    } catch (err) {
+      setMessages((m) => [...m, { from: 'bot', text: `Sorry, I hit a snag. Please WhatsApp us at ${FULVORA.whatsapp} or use the Contact form above.` }]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -801,25 +816,38 @@ const Chatbot = () => {
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15"><Bot className="h-4 w-4" /></span>
               <div className="leading-tight">
                 <p className="text-sm font-semibold">Fulvora Assistant</p>
-                <p className="text-[11px] text-white/80">Typically replies instantly</p>
+                <p className="text-[11px] text-white/80 flex items-center gap-1.5">
+                  <Sparkles className="h-3 w-3" /> AI-powered · replies in seconds
+                </p>
               </div>
             </div>
-            <div ref={listRef} className="h-72 overflow-y-auto px-4 py-3 space-y-2 bg-white/70">
+            <div ref={listRef} className="h-80 overflow-y-auto px-4 py-3 space-y-2 bg-white/70">
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.from === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm ${m.from === 'user' ? 'bg-brand-ink text-white' : 'bg-white border border-brand-ink/10 text-brand-ink'}`}>{m.text}</div>
+                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap leading-relaxed ${m.from === 'user' ? 'bg-brand-ink text-white' : 'bg-white border border-brand-ink/10 text-brand-ink'}`}>
+                    {m.from === 'bot' ? renderRichText(m.text) : m.text}
+                  </div>
                 </div>
               ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl bg-white border border-brand-ink/10 px-3.5 py-2.5 text-sm text-brand-ink2 inline-flex gap-1">
+                    <span className="h-1.5 w-1.5 bg-brand-purple rounded-full animate-pulse" />
+                    <span className="h-1.5 w-1.5 bg-brand-purple rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                    <span className="h-1.5 w-1.5 bg-brand-purple rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="px-3 pt-2 pb-3 bg-white/80 border-t border-white/60">
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {QUICK_REPLIES.map((q) => (
-                  <button key={q} onClick={() => send(q)} className="text-[11px] rounded-full border border-brand-ink/10 bg-white px-2.5 py-1 text-brand-ink2 hover:border-[#6D28D9] hover:text-[#6D28D9] transition-colors">{q}</button>
+                  <button key={q} onClick={() => send(q)} disabled={loading} className="text-[11px] rounded-full border border-brand-ink/10 bg-white px-2.5 py-1 text-brand-ink2 hover:border-[#6D28D9] hover:text-[#6D28D9] transition-colors disabled:opacity-50">{q}</button>
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder="Ask about pricing, services…" className="flex-1 rounded-full border border-brand-ink/10 bg-white px-3.5 py-2 text-sm focus:outline-none focus:border-[#6D28D9]" />
-                <button onClick={() => send()} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-[#6D28D9] to-[#8B5CF6] text-white"><Send className="h-4 w-4" /></button>
+                <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} disabled={loading} placeholder="Ask about pricing, book a call…" className="flex-1 rounded-full border border-brand-ink/10 bg-white px-3.5 py-2 text-sm focus:outline-none focus:border-[#6D28D9] disabled:opacity-60" />
+                <button onClick={() => send()} disabled={loading || !input.trim()} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-[#6D28D9] to-[#8B5CF6] text-white disabled:opacity-50"><Send className="h-4 w-4" /></button>
               </div>
             </div>
           </motion.div>
