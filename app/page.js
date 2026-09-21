@@ -658,9 +658,10 @@ const Footer = () => (
           </div>
         </div>
       </div>
-      <div className="mt-12 pt-6 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-white/50">
+      <div className="mt-12 pt-6 border-t border-white/10 grid gap-3 text-center text-xs text-white/50 md:grid-cols-3 md:items-center">
+        <span aria-hidden="true" />
         <p>© {new Date().getFullYear()} Fulvora Digital. All rights reserved.</p>
-        <p>Crafted with intent for Pune & PCMC businesses.</p>
+        <p className="md:text-right">Crafted with intent for Pune & PCMC businesses.</p>
       </div>
     </div>
   </footer>
