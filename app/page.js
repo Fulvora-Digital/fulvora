@@ -87,19 +87,24 @@ const WHY_FULVORA = [
 const Logo = ({ variant = 'light' }) => {
   const dark = variant === 'dark';
   return (
-    <a href="#top" className="flex items-center gap-2.5 group" aria-label="Fulvora Digital">
-      <span className="relative inline-flex h-10 w-10 items-center justify-center">
+    <a href="#top" className="inline-flex h-8 w-[140px] items-center group" aria-label="Fulvora Digital">
+      <Image
+        src="/main_logo_fulvora-digital.png"
+        alt="Fulvora Digital"
+        width={924}
+        height={311}
+        priority
+        className="hidden h-auto w-full object-contain sm:block"
+      />
+      <span className="relative inline-flex h-8 w-8 items-center justify-center sm:hidden">
         <Image
           src="/fulvora-logo.png"
           alt="Fulvora Digital"
           width={80}
           height={80}
           priority
-          className="h-10 w-10 object-contain drop-shadow-[0_6px_20px_rgba(109,40,217,0.35)]"
+          className="h-8 w-8 object-contain drop-shadow-[0_6px_20px_rgba(109,40,217,0.35)]"
         />
-      </span>
-      <span className={`font-heading text-[19px] tracking-tight ${dark ? 'text-white' : 'text-brand-ink'}`} style={{ fontWeight: 700 }}>
-        Fulvora <span className="text-[#8B5CF6]">Digital</span>
       </span>
     </a>
   );

@@ -1,19 +1,4 @@
-import { Space_Grotesk, Manrope } from 'next/font/google';
 import './globals.css';
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
-  variable: '--font-heading',
-  display: 'swap',
-});
-
-const manrope = Manrope({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-body',
-  display: 'swap',
-});
 
 const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://fulvoradigital.com';
 
@@ -47,6 +32,11 @@ export const metadata = {
   },
   robots: { index: true, follow: true },
   alternates: { canonical: SITE_URL },
+  icons: {
+    icon: '/fulvora-logo.png',
+    shortcut: '/fulvora-logo.png',
+    apple: '/fulvora-logo.png',
+  },
 };
 
 export const viewport = {
@@ -83,7 +73,7 @@ const jsonLd = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${spaceGrotesk.variable} ${manrope.variable}`}>
+    <html lang="en">
       <head>
         <link rel="icon" href="/fulvora-logo.png" type="image/png" />
         <link rel="apple-touch-icon" href="/fulvora-logo.png" />
