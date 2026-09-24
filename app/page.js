@@ -9,6 +9,7 @@ import {
   Stethoscope, Scissors, Dumbbell, Home as HomeIcon, ShoppingBag,
   Zap, Layers, Eye, Rocket, Send, Mail, Bot, HelpCircle, Instagram, Linkedin,
 } from 'lucide-react';
+import ClientOnboardingForm from '@/components/ClientOnboardingForm';
 import { FULVORA } from '@/lib/fulvora-config';
 
 // ------------------------------------------------------------------
@@ -729,7 +730,7 @@ const WhatsAppPill = ({ businessType }) => {
                 transition={{ duration: 0.25 }}
                 className="text-[12px] font-medium max-w-[220px] truncate"
               >
-                {trimmed ? `Pre-filled: ${trimmed}` : 'Instant reply during work hours'}
+                Instant reply during work hours
               </motion.span>
             </div>
           </motion.a>
@@ -759,7 +760,7 @@ const WhatsAppPill = ({ businessType }) => {
                 <span className="flex flex-col leading-tight min-w-0">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-white/85">Chat on WhatsApp</span>
                   <span className="text-[13px] font-semibold truncate">
-                    {trimmed ? `Ask about ${trimmed}` : 'Get a reply within minutes'}
+                    Get a reply within minutes
                   </span>
                 </span>
               </span>
@@ -901,6 +902,7 @@ function App() {
       <WhoWeHelp />
       <Pricing />
       <WhyFulvora />
+      <ClientOnboardingForm />
       <Contact onBusinessTypeChange={setBusinessType} />
       <Footer />
       <WhatsAppPill businessType={businessType} />

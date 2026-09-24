@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import dns from 'node:dns';
+import crypto from 'node:crypto';
 import { MongoClient } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import { createChat, UserMessage, validateApiKey } from 'emergentintegrations';
@@ -12,13 +14,123 @@ import { Resend } from 'resend';
 
 export const runtime = 'nodejs';
 
+const ADMIN_COOKIE = 'fulvora_admin_session';
+const ADMIN_SESSION_SECONDS = 60 * 60 * 12;
+const LEAD_COLLECTIONS = {
+  contacts: 'contact_leads',
+  onboarding: 'onboarding_leads',
+  chat: 'chat_leads',
+};
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 8;
+
+function adminSecret() {
+  return process.env.ADMIN_SESSION_SECRET || '';
+}
+
+function sameSecret(a, b) {
+  const left = Buffer.from(String(a || ''));
+  const right = Buffer.from(String(b || ''));
+  return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right);
+}
+
+function encodeAdminToken(payload) {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', adminSecret()).update(encoded).digest('base64url');
+  return `${encoded}.${signature}`;
+}
+
+function verifyAdminToken(token) {
+  if (!token || !adminSecret()) return false;
+  const [encoded, signature] = token.split('.');
+  if (!encoded || !signature) return false;
+  const expected = crypto.createHmac('sha256', adminSecret()).update(encoded).digest('base64url');
+  if (!sameSecret(signature, expected)) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    return payload.role === 'admin' && Number(payload.exp) > Date.now();
+  } catch (_) {
+    return false;
+  }
+}
+
+function isAdmin(request) {
+  return verifyAdminToken(request.cookies.get(ADMIN_COOKIE)?.value);
+}
+
+function adminRequired() {
+  return json({ ok: false, error: 'Admin authentication required.' }, 401);
+}
+
+function sameOrigin(request) {
+  const origin = request.headers.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === request.headers.get('host');
+  } catch (_) {
+    return false;
+  }
+}
+
+function adminMutationAllowed(request) {
+  return isAdmin(request) && sameOrigin(request);
+}
+
+function loginRateLimited(request, email) {
+  const key = `${request.headers.get('x-forwarded-for') || 'local'}:${email}`;
+  const now = Date.now();
+  const current = loginAttempts.get(key);
+  if (!current || now - current.startedAt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { startedAt: now, count: 1 });
+    return false;
+  }
+  current.count += 1;
+  return current.count > LOGIN_MAX_ATTEMPTS;
+}
+
+function clearLoginAttempts(request, email) {
+  loginAttempts.delete(`${request.headers.get('x-forwarded-for') || 'local'}:${email}`);
+}
+
+function safeAdminFields(input) {
+  return Object.fromEntries(Object.entries(input || {}).filter(([key]) => (
+    key !== '_id' && key !== 'id' && key !== 'source' && key !== 'createdAt' && !key.startsWith('$') && !key.includes('.')
+  )));
+}
+
+function collectionName(type) {
+  return LEAD_COLLECTIONS[type] || null;
+}
+
+function serialiseLead(lead) {
+  if (!lead) return lead;
+  return { ...lead, _id: lead._id?.toString?.() || lead._id };
+}
+
 let cachedClient = null;
 async function getDb() {
   if (cachedClient) return cachedClient.db(process.env.DB_NAME || 'fulvora');
   const uri = process.env.MONGO_URL;
   if (!uri) throw new Error('MONGO_URL not configured');
-  const client = new MongoClient(uri);
-  await client.connect();
+  const dnsServers = (process.env.MONGO_DNS_SERVERS || '')
+    .split(',')
+    .map((server) => server.trim())
+    .filter(Boolean);
+  if (dnsServers.length) dns.setServers(dnsServers);
+  const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10000 });
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await client.connect();
+      lastError = null;
+      break;
+    } catch (err) {
+      lastError = err;
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  if (lastError) throw lastError;
   cachedClient = client;
   return client.db(process.env.DB_NAME || 'fulvora');
 }
@@ -96,11 +208,16 @@ async function handleContact(request) {
       createdAt: new Date().toISOString(),
     };
 
-    const db = await getDb();
-    await db.collection('contact_leads').insertOne(doc);
+    let stored = false;
+    try {
+      const db = await getDb();
+      await db.collection('contact_leads').insertOne(doc);
+      stored = true;
+    } catch (dbErr) {
+      console.warn('[contact] DB insert skipped:', dbErr?.message || dbErr);
+    }
 
-    // Fire-and-forget email alert (non-blocking to the visitor's response)
-    sendLeadEmail({
+    const emailResult = await sendLeadEmail({
       subject: `New website enquiry — ${doc.name}${doc.businessType ? ` · ${doc.businessType}` : ''}`,
       heading: 'New contact form enquiry',
       rows: [
@@ -111,9 +228,21 @@ async function handleContact(request) {
         { label: 'Source', value: 'Contact form' },
         { label: 'Received', value: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' },
       ],
-    }).catch(() => {});
+    });
 
-    return json({ ok: true, id: doc.id });
+    if (!stored && !emailResult?.ok) {
+      return json({
+        ok: false,
+        error: 'We could not save your enquiry. Please try again or contact us on WhatsApp.',
+      }, 503);
+    }
+
+    return json({
+      ok: true,
+      id: doc.id,
+      stored,
+      emailed: !!emailResult?.ok,
+    });
   } catch (err) {
     return json({ ok: false, error: err?.message || 'Unexpected error' }, 500);
   }
@@ -365,17 +494,191 @@ function resolvePath(params) {
 export async function GET(request, ctx) {
   const params = await ctx.params;
   const path = resolvePath(params);
+  if (path === '/admin/me') return handleAdminMe(request);
+  if (path.startsWith('/admin/leads/')) return handleAdminLeads(request, path.split('/')[3]);
   if (path === '/health' || path === '/') {
     return json({ ok: true, service: 'fulvora-api', time: new Date().toISOString() });
   }
   return json({ ok: false, error: 'Not found' }, 404);
 }
 
+async function handleOnboarding(request) {
+  try {
+    const body = await request.json();
+    const payload = body || {};
+
+    const required = ['businessName', 'ownerName', 'phoneWhatsapp', 'email', 'address', 'serviceAreas', 'topServices'];
+    const missing = required.filter((field) => !String(payload[field] || '').trim());
+    if (missing.length) {
+      return json({ ok: false, error: 'Missing required onboarding fields.', missing }, 400);
+    }
+
+    const doc = {
+      id: uuidv4(),
+      source: 'client_onboarding_form',
+      ...payload,
+      createdAt: new Date().toISOString(),
+      mainGoals: Array.isArray(payload.mainGoals) ? payload.mainGoals : [],
+    };
+
+    try {
+      const db = await getDb();
+      await db.collection('onboarding_leads').insertOne(doc);
+    } catch (dbErr) {
+      console.warn('[onboarding] DB insert skipped:', dbErr?.message || dbErr);
+    }
+
+    const rows = [
+      { label: 'Business Name', value: doc.businessName },
+      { label: 'Owner', value: doc.ownerName },
+      { label: 'Phone / WhatsApp', value: doc.phoneWhatsapp },
+      { label: 'Email', value: doc.email },
+      { label: 'Address', value: doc.address },
+      { label: 'Service Area', value: doc.serviceAreas },
+      { label: 'Top Services', value: doc.topServices },
+      { label: 'Main Goal(s)', value: doc.mainGoals.join(', ') },
+      { label: 'Ad Spend Comfort', value: doc.comfortableAdSpend },
+      { label: 'Website', value: doc.website },
+      { label: 'Source', value: 'Client onboarding form' },
+      { label: 'Received', value: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' },
+    ];
+
+    sendLeadEmail({
+      subject: `New onboarding form — ${doc.businessName || doc.ownerName || 'Unnamed business'}`,
+      heading: 'New client onboarding submission',
+      rows,
+    }).catch(() => {});
+
+    return json({ ok: true, id: doc.id });
+  } catch (err) {
+    return json({ ok: false, error: err?.message || 'Unexpected error' }, 500);
+  }
+}
+
+async function handleAdminLogin(request) {
+  try {
+    const body = await request.json();
+    const email = String(body?.email || '').trim().toLowerCase();
+    const password = String(body?.password || '');
+    if (loginRateLimited(request, email)) {
+      return json({ ok: false, error: 'Too many login attempts. Try again later.' }, 429);
+    }
+    const valid = adminSecret()
+      && sameSecret(email, String(process.env.ADMIN_EMAIL || '').trim().toLowerCase())
+      && sameSecret(password, process.env.ADMIN_PASSWORD);
+    if (!valid) return json({ ok: false, error: 'Invalid admin credentials.' }, 401);
+    clearLoginAttempts(request, email);
+
+    const response = json({ ok: true, email });
+    response.cookies.set(ADMIN_COOKIE, encodeAdminToken({
+      role: 'admin',
+      email,
+      exp: Date.now() + ADMIN_SESSION_SECONDS * 1000,
+    }), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: ADMIN_SESSION_SECONDS,
+      path: '/',
+    });
+    return response;
+  } catch (err) {
+    return json({ ok: false, error: err?.message || 'Login failed.' }, 400);
+  }
+}
+
+function handleAdminLogout() {
+  const response = json({ ok: true });
+  response.cookies.set(ADMIN_COOKIE, '', { httpOnly: true, expires: new Date(0), path: '/' });
+  return response;
+}
+
+function handleAdminMe(request) {
+  return json({ ok: isAdmin(request), authenticated: isAdmin(request) });
+}
+
+async function handleAdminLeads(request, type) {
+  if (!isAdmin(request)) return adminRequired();
+  const name = collectionName(type);
+  if (!name) return json({ ok: false, error: 'Unknown lead collection.' }, 404);
+  const db = await getDb();
+  const leads = await db.collection(name).find({}).sort({ createdAt: -1, updatedAt: -1 }).limit(500).toArray();
+  return json({ ok: true, type, leads: leads.map(serialiseLead) });
+}
+
+async function handleAdminLeadCreate(request, type) {
+  if (!adminMutationAllowed(request)) return adminRequired();
+  const name = collectionName(type);
+  if (!name) return json({ ok: false, error: 'Unknown lead collection.' }, 404);
+  const body = await request.json();
+  const input = body && typeof body === 'object' ? safeAdminFields(body) : {};
+  const doc = {
+    ...input,
+    id: uuidv4(),
+    source: input.source || `admin_${type}`,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const db = await getDb();
+  await db.collection(name).insertOne(doc);
+  return json({ ok: true, lead: serialiseLead(doc) }, 201);
+}
+
+async function handleAdminLeadMutation(request, type, id, method) {
+  if (!adminMutationAllowed(request)) return adminRequired();
+  const name = collectionName(type);
+  if (!name) return json({ ok: false, error: 'Unknown lead collection.' }, 404);
+  if (!id) return json({ ok: false, error: 'Lead id is required.' }, 400);
+  const db = await getDb();
+  const leads = db.collection(name);
+  const filter = { id };
+
+  if (method === 'DELETE') {
+    const result = await leads.deleteOne(filter);
+    if (!result.deletedCount) return json({ ok: false, error: 'Lead not found.' }, 404);
+    return json({ ok: true, deleted: id });
+  }
+
+  const body = await request.json();
+  const updates = body && typeof body === 'object' ? safeAdminFields(body) : {};
+  updates.updatedAt = new Date();
+  const result = await leads.updateOne(filter, { $set: updates });
+  if (!result.matchedCount) return json({ ok: false, error: 'Lead not found.' }, 404);
+  const updated = await leads.findOne(filter);
+  return json({ ok: true, lead: serialiseLead(updated) });
+}
+
 export async function POST(request, ctx) {
   const params = await ctx.params;
   const path = resolvePath(params);
+  if (path === '/admin/login') return handleAdminLogin(request);
+  if (path === '/admin/logout') return sameOrigin(request) ? handleAdminLogout() : adminRequired();
+  if (path.startsWith('/admin/leads/')) return handleAdminLeadCreate(request, path.split('/')[3]);
   if (path === '/contact') return handleContact(request);
   if (path === '/chat') return handleChat(request);
+  if (path === '/onboarding') return handleOnboarding(request);
+  return json({ ok: false, error: 'Not found' }, 404);
+}
+
+export async function PUT(request, ctx) {
+  const params = await ctx.params;
+  const parts = params?.path || [];
+  if (Array.isArray(parts) && parts[0] === 'admin' && parts[1] === 'leads') {
+    return handleAdminLeadMutation(request, parts[2], parts[3], 'PUT');
+  }
+  return json({ ok: false, error: 'Not found' }, 404);
+}
+
+export async function PATCH(request, ctx) {
+  return PUT(request, ctx);
+}
+
+export async function DELETE(request, ctx) {
+  const params = await ctx.params;
+  const parts = params?.path || [];
+  if (Array.isArray(parts) && parts[0] === 'admin' && parts[1] === 'leads') {
+    return handleAdminLeadMutation(request, parts[2], parts[3], 'DELETE');
+  }
   return json({ ok: false, error: 'Not found' }, 404);
 }
 
@@ -383,8 +686,8 @@ export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Origin': process.env.CORS_ORIGINS || 'http://localhost:3000',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     },
   });
