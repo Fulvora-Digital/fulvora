@@ -95,18 +95,8 @@ const Logo = ({ variant = 'light' }) => {
         width={924}
         height={311}
         priority
-        className="hidden h-auto w-full object-contain sm:block"
+        className="h-auto w-full object-contain"
       />
-      <span className="relative inline-flex h-8 w-8 items-center justify-center sm:hidden">
-        <Image
-          src="/fulvora-logo.png"
-          alt="Fulvora Digital"
-          width={80}
-          height={80}
-          priority
-          className="h-8 w-8 object-contain drop-shadow-[0_6px_20px_rgba(109,40,217,0.35)]"
-        />
-      </span>
     </a>
   );
 };
